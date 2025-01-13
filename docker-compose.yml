@@ -1,0 +1,58 @@
+services:
+  pleiades_backend:
+    build:
+      context: apps/pleiades_backend
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - '3000:3000'
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - UPDATE_EMBEDDINGS_ON_BOOTSTRAP=1
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATABASE_URL=postgresql://user:pass@db:5432/app?schema=api_schema
+    env_file:
+      - apps/pleiades_backend/.env
+  pleiades_core:
+    build:
+      context: .
+      dockerfile: apps/pleiades_core/Dockerfile
+    env_file:
+      - apps/pleiades_core/.env
+    environment:
+      - POSTGRES_HOST=db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - POSTGRES_DB_URL=postgresql://user:pass@db:5432/app
+      - API_URL=http://pleiades_backend:3000
+    command: python -u -m apps.pleiades_core.main
+  pleiades_scheduler:
+    build:
+      context: .
+      dockerfile: apps/pleiades_scheduler/Dockerfile
+    env_file:
+      - apps/pleiades_scheduler/.env
+    command: python -u -m apps.pleiades_scheduler.main
+  redis:
+    image: redis:latest
+    ports:
+      - 6379:6379
+  db:
+    image: postgres:16
+    restart: always
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: app
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d app"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
